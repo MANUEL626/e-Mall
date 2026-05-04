@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/auth/sign_out_ui.dart';
+import '../../../l10n/app_localizations.dart';
+
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
@@ -8,6 +11,7 @@ class SettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: _surface,
       appBar: AppBar(
@@ -104,10 +108,11 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const Divider(height: 1, indent: 0),
                 _MenuTile(
-                  title: 'Logout',
-                  subtitle: 'Sign out from e-Mall',
+                  title: l10n.signOutMenuTitle,
+                  subtitle: l10n.signOutMenuSubtitle,
                   icon: Icons.logout_outlined,
                   isDestructive: true,
+                  onTap: () => presentSignOutFlow(context),
                 ),
               ],
             ),
@@ -268,11 +273,13 @@ class _MenuTile extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     this.isDestructive = false,
+    this.onTap,
   });
   final String title;
   final String subtitle;
   final IconData icon;
   final bool isDestructive;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -282,7 +289,7 @@ class _MenuTile extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {},
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           child: Row(

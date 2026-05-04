@@ -45,5 +45,22 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>L’app a besoin d’accéder à vos photos pour choisir une image de profil.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>La caméra permet de scanner le code QR affiché par la boutique ou le livreur pour confirmer la réception de votre commande.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>emall.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>emall</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

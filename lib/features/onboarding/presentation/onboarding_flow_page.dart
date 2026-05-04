@@ -1,6 +1,20 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-import '../../shell/presentation/main_shell_page.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../core/auth/bootstrap_customer_result.dart';
+import '../../../core/auth/customer_auth_service.dart';
+import '../../../core/auth/customer_profile_store.dart';
+import '../../../core/branding/app_branding.dart';
+import '../../../core/config/app_config.dart';
+import '../../../core/locale/app_locale_controller.dart';
+import '../../../core/phone/phone_country.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../../core/storage/profile_photo_storage.dart';
+import '../../../core/auth/auth_gate_service.dart';
 
 class OnboardingFlowPage extends StatefulWidget {
   const OnboardingFlowPage({super.key});
@@ -11,55 +25,493 @@ class OnboardingFlowPage extends StatefulWidget {
 
 class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
   final _phoneController = TextEditingController();
+  final _dialDigitsController =
+      TextEditingController(text: defaultPhoneCountry.dialCode);
+  final _otpController = TextEditingController();
   final _usernameController = TextEditingController();
-  final _bioController = TextEditingController();
+  final _prenomController = TextEditingController();
+  final _nomController = TextEditingController();
+  final _mailController = TextEditingController();
+
+  PhoneCountry _selectedPhoneCountry = defaultPhoneCountry;
+
   int _step = 0;
+  String? _phoneE164;
+  BootstrapCustomerResult? _bootstrapResult;
+  Uint8List? _profilePhotoBytes;
+
+  bool _phoneLoading = false;
+  bool _otpLoading = false;
+  bool _profileLoading = false;
+  String? _stepError;
+
+  int _resendSecondsLeft = 0;
+  Timer? _resendTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _dialDigitsController.addListener(_syncCountryFromDialDigits);
+  }
+
+  void _syncCountryFromDialDigits() {
+    if (!mounted) return;
+    final digits = _dialDigitsController.text.trim();
+    if (digits.isEmpty) return;
+    final match = matchPhoneCountryByDialPrefix(digits);
+    if (match == null || match.iso2 == _selectedPhoneCountry.iso2) return;
+
+    final sameDialCount =
+        kPhoneCountriesDisplay.where((c) => c.dialCode == match.dialCode).length;
+    if (sameDialCount > 1 && digits == match.dialCode) {
+      return;
+    }
+    setState(() => _selectedPhoneCountry = match);
+  }
+
+  void _selectPhoneCountry(PhoneCountry country) {
+    setState(() {
+      _selectedPhoneCountry = country;
+      _dialDigitsController.text = country.dialCode;
+      _dialDigitsController.selection = TextSelection.collapsed(offset: _dialDigitsController.text.length);
+    });
+  }
+
+  /// Numéro national + indicatif → E.164 (8–15 chiffres au total hors « + »).
+  String? _composePhoneE164() {
+    final cc = _dialDigitsController.text.replaceAll(RegExp(r'\D'), '');
+    var nsn = _phoneController.text.replaceAll(RegExp(r'\D'), '');
+    if (cc.isEmpty || nsn.isEmpty) return null;
+    if (nsn.startsWith('0')) nsn = nsn.substring(1);
+    if (nsn.isEmpty) return null;
+    final fullDigits = cc + nsn;
+    if (fullDigits.length < 8 || fullDigits.length > 15) return null;
+
+    final matchedByDial = matchPhoneCountryByDialPrefix(cc);
+    final forLength = matchedByDial ?? _selectedPhoneCountry;
+    if (nsn.length < forLength.minNsnDigits || nsn.length > forLength.maxNsnDigits) {
+      return null;
+    }
+    return '+$fullDigits';
+  }
 
   @override
   void dispose() {
+    _resendTimer?.cancel();
+    _dialDigitsController.removeListener(_syncCountryFromDialDigits);
+    _dialDigitsController.dispose();
     _phoneController.dispose();
+    _otpController.dispose();
     _usernameController.dispose();
-    _bioController.dispose();
+    _prenomController.dispose();
+    _nomController.dispose();
+    _mailController.dispose();
     super.dispose();
   }
 
-  void _next() {
-    if (_step < 3) {
-      setState(() => _step++);
+  void _startResendCooldown({int seconds = 45}) {
+    _resendTimer?.cancel();
+    setState(() => _resendSecondsLeft = seconds);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      if (_resendSecondsLeft <= 1) {
+        t.cancel();
+        setState(() => _resendSecondsLeft = 0);
+      } else {
+        setState(() => _resendSecondsLeft--);
+      }
+    });
+  }
+
+  Future<void> _submitPhone() async {
+    setState(() {
+      _stepError = null;
+    });
+    if (!AppConfig.isSupabaseConfigured) {
+      setState(() {
+        _stepError = AppLocalizations.of(context)!.errorSupabaseNotConfigured;
+      });
       return;
     }
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainShellPage()),
+    final e164 = _composePhoneE164();
+    if (e164 == null) {
+      setState(() {
+        _stepError = AppLocalizations.of(context)!.errorPhoneInvalid(
+          _selectedPhoneCountry.minNsnDigits,
+          _selectedPhoneCountry.maxNsnDigits,
+          _selectedPhoneCountry.name,
+        );
+      });
+      return;
+    }
+    setState(() => _phoneLoading = true);
+    try {
+      await CustomerAuthService.instance.signInWithOtp(phoneE164: e164);
+      if (!mounted) return;
+      setState(() {
+        _phoneE164 = e164;
+        _step = 2;
+        _phoneLoading = false;
+      });
+      _startResendCooldown();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stepError = e.message;
+        _phoneLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stepError = e.toString();
+        _phoneLoading = false;
+      });
+    }
+  }
+
+  Future<void> _resendOtp() async {
+    final phone = _phoneE164;
+    if (phone == null || _resendSecondsLeft > 0) return;
+    setState(() => _stepError = null);
+    try {
+      await CustomerAuthService.instance.resendOtp(phoneE164: phone);
+      if (!mounted) return;
+      _startResendCooldown();
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _stepError = e.message);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _stepError = e.toString());
+    }
+  }
+
+  Future<void> _verifyOtpAndBootstrap() async {
+    final phone = _phoneE164;
+    if (phone == null) return;
+    final code = _otpController.text.trim();
+    if (code.length != 6) {
+      setState(() => _stepError = AppLocalizations.of(context)!.errorOtpLength);
+      return;
+    }
+    setState(() {
+      _stepError = null;
+      _otpLoading = true;
+    });
+    try {
+      final session = await CustomerAuthService.instance.verifyOtp(
+        phoneE164: phone,
+        codeSixDigits: code,
+      );
+      if (!AppConfig.isApiConfigured) {
+        if (!mounted) return;
+        setState(() {
+          _stepError = AppLocalizations.of(context)!.errorApiBaseUrlOtp;
+          _otpLoading = false;
+        });
+        return;
+      }
+      final bootstrap = await CustomerAuthService.instance.bootstrapCustomer(
+        session,
+        profile: const <String, dynamic>{},
+      );
+      await CustomerProfileStore.instance.setProfile(bootstrap);
+      if (!mounted) return;
+      setState(() {
+        _bootstrapResult = bootstrap;
+        _otpLoading = false;
+      });
+      _routeAfterBootstrap(bootstrap);
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stepError = e.message;
+        _otpLoading = false;
+      });
+    } on CustomerBootstrapException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stepError = e.message;
+        _otpLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stepError = e.toString();
+        _otpLoading = false;
+      });
+    }
+  }
+
+  /// Après OTP + bootstrap : nouveaux comptes → complétion du profil ; sinon → accueil.
+  void _routeAfterBootstrap(BootstrapCustomerResult bootstrap) {
+    if (bootstrap.isNewCustomer) {
+      final u = bootstrap.username;
+      if (u != null && u.isNotEmpty) {
+        _usernameController.text = u;
+      }
+      final p = bootstrap.prenom;
+      if (p != null && p.isNotEmpty) {
+        _prenomController.text = p;
+      }
+      final n = bootstrap.nom;
+      if (n != null && n.isNotEmpty) {
+        _nomController.text = n;
+      }
+      final m = bootstrap.mail;
+      if (m != null && m.isNotEmpty) {
+        _mailController.text = m;
+      }
+      setState(() => _step = 3);
+      return;
+    }
+    _goHome();
+  }
+
+  bool _isValidEmail(String value) {
+    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value);
+  }
+
+  Future<void> _pickProfilePhoto() async {
+    try {
+      final picker = ImagePicker();
+      final x = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 88,
+      );
+      if (x == null || !mounted) return;
+      final bytes = await x.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _profilePhotoBytes = bytes;
+        _stepError = null;
+      });
+    } on MissingPluginException {
+      if (!mounted) return;
+      setState(() {
+        _stepError = AppLocalizations.of(context)!.errorGalleryUnavailable;
+      });
+    }
+  }
+
+  void _clearProfilePhoto() {
+    setState(() => _profilePhotoBytes = null);
+  }
+
+  Future<void> _finishProfile() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) {
+      setState(() => _stepError = AppLocalizations.of(context)!.errorSessionExpired);
+      return;
+    }
+    final username = _usernameController.text.trim();
+    final prenom = _prenomController.text.trim();
+    final nom = _nomController.text.trim();
+    final mail = _mailController.text.trim();
+    if (mail.isNotEmpty && !_isValidEmail(mail)) {
+      setState(() => _stepError = AppLocalizations.of(context)!.errorInvalidEmail);
+      return;
+    }
+    final photo = _profilePhotoBytes;
+    final hasPhoto = photo != null && photo.isNotEmpty;
+
+    final body = <String, dynamic>{};
+    if (username.isNotEmpty) {
+      body['username'] = username;
+    }
+    if (prenom.isNotEmpty) {
+      body['first_name'] = prenom;
+    }
+    if (nom.isNotEmpty) {
+      body['last_name'] = nom;
+    }
+    if (mail.isNotEmpty) {
+      body['mail'] = mail;
+    }
+
+    if (body.isEmpty && !hasPhoto) {
+      _goHome();
+      return;
+    }
+    if (!AppConfig.isApiConfigured) {
+      setState(() => _stepError = AppLocalizations.of(context)!.errorApiBaseUrlProfile);
+      return;
+    }
+
+    setState(() {
+      _stepError = null;
+      _profileLoading = true;
+    });
+    try {
+      if (hasPhoto) {
+        final url = await ProfilePhotoStorage.uploadProfilePhoto(photo);
+        body['profilepicture'] = url;
+      }
+      if (body.isEmpty) {
+        if (!mounted) return;
+        setState(() => _profileLoading = false);
+        _goHome();
+        return;
+      }
+      final updated =
+          await CustomerAuthService.instance.updateCustomerProfile(session, profile: body);
+      await CustomerProfileStore.instance.setProfile(updated);
+      if (!mounted) return;
+      setState(() => _profileLoading = false);
+      _goHome();
+    } on CustomerBootstrapException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stepError = e.message;
+        _profileLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stepError = e.toString();
+        _profileLoading = false;
+      });
+    }
+  }
+
+  void _skipProfileStep() {
+    _goHome();
+  }
+
+  Future<void> _goHome() async {
+    await AuthGateService.completeAuthFlowToMain();
+  }
+
+  void _nextWelcome() {
+    setState(() => _step = 1);
+  }
+
+  void _openLanguagePicker(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFFFFF8F3),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 16, 8, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  l10n.languageTitle,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF3F2413),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: const Icon(Icons.flag_rounded, color: Color(0xFF3F2413)),
+                  title: Text(l10n.languageFrench),
+                  onTap: () {
+                    unawaited(AppLocaleController.instance.setLocale(const Locale('fr')));
+                    Navigator.pop(ctx);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.flag_outlined, color: Color(0xFF3F2413)),
+                  title: Text(l10n.languageEnglish),
+                  onTap: () {
+                    unawaited(AppLocaleController.instance.setLocale(const Locale('en')));
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      _WelcomeStep(onNext: _next),
-      _PhoneStep(controller: _phoneController, onNext: _next),
-      _OtpStep(onNext: _next),
+    final l10n = AppLocalizations.of(context)!;
+    final pages = <Widget>[
+      _WelcomeStep(l10n: l10n, onNext: _nextWelcome),
+      _PhoneStep(
+        l10n: l10n,
+        dialDigitsController: _dialDigitsController,
+        nationalController: _phoneController,
+        selectedCountry: _selectedPhoneCountry,
+        onCountrySelected: _selectPhoneCountry,
+        onDialDigitsEdited: _syncCountryFromDialDigits,
+        errorText: _stepError,
+        isLoading: _phoneLoading,
+        onSubmit: _submitPhone,
+      ),
+      _OtpStep(
+        l10n: l10n,
+        phoneMasked: _phoneE164,
+        controller: _otpController,
+        errorText: _stepError,
+        isLoading: _otpLoading,
+        resendSecondsLeft: _resendSecondsLeft,
+        onVerify: _verifyOtpAndBootstrap,
+        onResend: _resendOtp,
+      ),
       _ProfileStep(
+        l10n: l10n,
         usernameController: _usernameController,
-        bioController: _bioController,
-        onNext: _next,
+        prenomController: _prenomController,
+        nomController: _nomController,
+        mailController: _mailController,
+        profilePhotoBytes: _profilePhotoBytes,
+        onPickPhoto: _pickProfilePhoto,
+        onClearPhoto: _clearProfilePhoto,
+        onSkip: _skipProfileStep,
+        isNewCustomer: _bootstrapResult?.isNewCustomer ?? false,
+        errorText: _stepError,
+        isLoading: _profileLoading,
+        onFinish: _finishProfile,
       ),
     ];
 
     return Scaffold(
-      body: SafeArea(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          child: pages[_step],
-        ),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: SafeArea(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 280),
+                child: pages[_step],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: IconButton(
+                icon: const Icon(Icons.language_rounded, color: Color(0xFF3F2413)),
+                tooltip: l10n.languageTitle,
+                onPressed: () => _openLanguagePicker(context),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _WelcomeStep extends StatelessWidget {
-  const _WelcomeStep({required this.onNext});
+  const _WelcomeStep({required this.l10n, required this.onNext});
 
+  final AppLocalizations l10n;
   final VoidCallback onNext;
 
   @override
@@ -76,56 +528,60 @@ class _WelcomeStep extends StatelessWidget {
               height: 320,
               width: double.infinity,
               color: const Color(0xFFEAD9B7),
-              alignment: Alignment.bottomRight,
-              child: Container(
-                margin: const EdgeInsets.all(14),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC45A12),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 16),
-                    SizedBox(width: 8),
-                    Text(
-                      'Handpicked',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
+              child: Stack(
+                children: [
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: AppBranding.logoImage(
+                        height: 220,
+                        fit: BoxFit.contain,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  Align(
+                    alignment: Alignment.bottomRight,
+                    child: Container(
+                      margin: const EdgeInsets.all(14),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFC45A12),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 16),
+                          const SizedBox(width: 8),
+                          Text(
+                            l10n.onboardingHandpicked,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           const SizedBox(height: 32),
-          const Text('e-Mall', style: TextStyle(fontSize: 46, fontWeight: FontWeight.w700, color: Color(0xFF3F2413))),
+          Text(
+            l10n.onboardingBrandTitle,
+            style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w700, color: Color(0xFF3F2413)),
+          ),
           const SizedBox(height: 12),
-          const Text(
-            'Discover a curated marketplace where heritage meets high-end digital shopping.',
+          Text(
+            l10n.onboardingWelcomeSubtitle,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 20, height: 1.4, color: Color(0xFF6D513E)),
+            style: const TextStyle(fontSize: 20, height: 1.4, color: Color(0xFF6D513E)),
           ),
           const Spacer(),
-          _PrimaryButton(label: 'Explore The Collection', onTap: onNext),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: onNext,
-              style: OutlinedButton.styleFrom(
-                side: BorderSide.none,
-                backgroundColor: const Color(0xFFF1DCCB),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-                padding: const EdgeInsets.symmetric(vertical: 17),
-              ),
-              child: const Text('Sign In', style: TextStyle(fontSize: 18, color: Color(0xFF4D2F1D), fontWeight: FontWeight.w700)),
-            ),
-          ),
+          _PrimaryButton(label: l10n.continueButton, onTap: onNext),
         ],
       ),
     );
@@ -133,10 +589,80 @@ class _WelcomeStep extends StatelessWidget {
 }
 
 class _PhoneStep extends StatelessWidget {
-  const _PhoneStep({required this.controller, required this.onNext});
+  const _PhoneStep({
+    required this.l10n,
+    required this.dialDigitsController,
+    required this.nationalController,
+    required this.selectedCountry,
+    required this.onCountrySelected,
+    required this.onDialDigitsEdited,
+    required this.onSubmit,
+    this.errorText,
+    this.isLoading = false,
+  });
 
-  final TextEditingController controller;
-  final VoidCallback onNext;
+  final AppLocalizations l10n;
+  final TextEditingController dialDigitsController;
+  final TextEditingController nationalController;
+  final PhoneCountry selectedCountry;
+  final void Function(PhoneCountry country) onCountrySelected;
+  final VoidCallback onDialDigitsEdited;
+  final VoidCallback onSubmit;
+  final String? errorText;
+  final bool isLoading;
+
+  static const _fieldFill = Color(0xFFF3E4D9);
+
+  Future<void> _openCountryPicker(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFFFF8F3),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final maxH = MediaQuery.sizeOf(ctx).height * 0.72;
+        return SafeArea(
+          child: SizedBox(
+            height: maxH,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Text(
+                    l10n.chooseCountryTitle,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF3F2413)),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: kPhoneCountriesDisplay.length,
+                    itemBuilder: (_, i) {
+                      final c = kPhoneCountriesDisplay[i];
+                      final selected = c.iso2 == selectedCountry.iso2;
+                      return ListTile(
+                        leading: Text(c.emoji, style: const TextStyle(fontSize: 28)),
+                        title: Text(c.name),
+                        subtitle: Text(c.displayDial, style: const TextStyle(color: Color(0xFF6D513E))),
+                        trailing: selected ? const Icon(Icons.check_circle, color: Color(0xFFC45A12)) : null,
+                        onTap: () {
+                          onCountrySelected(c);
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -144,56 +670,154 @@ class _PhoneStep extends StatelessWidget {
       key: const ValueKey('phone'),
       padding: const EdgeInsets.all(24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 20),
-          const CircleAvatar(
-            radius: 32,
-            backgroundColor: Colors.white,
-            child: Icon(Icons.shopping_bag_outlined, color: Color(0xFFC45A12)),
-          ),
-          const SizedBox(height: 24),
-          const Text('Welcome back', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 36, color: Color(0xFF3F2413))),
-          const SizedBox(height: 12),
-          const Text(
-            'Enter your phone number to access your artisan collection.',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 32),
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Phone Number', style: TextStyle(fontWeight: FontWeight.w600)),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3E4D9),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Text('NG  +234'),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(
-                    hintText: '80 000 0000',
-                    filled: true,
-                    fillColor: const Color(0xFFF3E4D9),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(22),
-                      borderSide: BorderSide.none,
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 20),
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundColor: Colors.white,
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: AppBranding.logoImage(height: 40, fit: BoxFit.contain),
                     ),
                   ),
-                ),
+                  const SizedBox(height: 24),
+                  Text(
+                    l10n.onboardingPhoneTitle,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 36, color: Color(0xFF3F2413)),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    l10n.onboardingPhoneSubtitle,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 32),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.labelCountry, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 8),
+                  Material(
+                    color: _fieldFill,
+                    borderRadius: BorderRadius.circular(22),
+                    child: InkWell(
+                      onTap: () => _openCountryPicker(context),
+                      borderRadius: BorderRadius.circular(22),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        child: Row(
+                          children: [
+                            Text(selectedCountry.emoji, style: const TextStyle(fontSize: 26)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    selectedCountry.name,
+                                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Color(0xFF3F2413)),
+                                  ),
+                                  Text(
+                                    selectedCountry.displayDial,
+                                    style: const TextStyle(fontSize: 14, color: Color(0xFF6D513E)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF6D513E)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.labelPhoneNumber, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: _fieldFill,
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(left: 14, right: 2),
+                              child: Text(
+                                '+',
+                                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF3F2413)),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 76,
+                              child: TextField(
+                                controller: dialDigitsController,
+                                onChanged: (_) => onDialDigitsEdited(),
+                                keyboardType: TextInputType.phone,
+                                textAlign: TextAlign.left,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                                decoration: const InputDecoration(
+                                  hintText: '234',
+                                  filled: false,
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 16),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: nationalController,
+                          keyboardType: TextInputType.phone,
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          decoration: InputDecoration(
+                            hintText: selectedCountry.iso2 == 'NG' ? l10n.phoneNationalHintNg : l10n.phoneNationalHint,
+                            filled: true,
+                            fillColor: _fieldFill,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(22),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorText!,
+                      style: const TextStyle(color: Color(0xFFB3261E), fontSize: 13),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                ],
               ),
-            ],
+            ),
           ),
-          const Spacer(),
-          _PrimaryButton(label: 'Continue', onTap: onNext),
+          _PrimaryButton(
+            label: l10n.continueButton,
+            onTap: isLoading ? null : onSubmit,
+            isLoading: isLoading,
+          ),
         ],
       ),
     );
@@ -201,8 +825,25 @@ class _PhoneStep extends StatelessWidget {
 }
 
 class _OtpStep extends StatelessWidget {
-  const _OtpStep({required this.onNext});
-  final VoidCallback onNext;
+  const _OtpStep({
+    required this.l10n,
+    required this.controller,
+    required this.onVerify,
+    required this.onResend,
+    this.phoneMasked,
+    this.errorText,
+    this.isLoading = false,
+    this.resendSecondsLeft = 0,
+  });
+
+  final AppLocalizations l10n;
+  final TextEditingController controller;
+  final VoidCallback onVerify;
+  final VoidCallback onResend;
+  final String? phoneMasked;
+  final String? errorText;
+  final bool isLoading;
+  final int resendSecondsLeft;
 
   @override
   Widget build(BuildContext context) {
@@ -210,34 +851,59 @@ class _OtpStep extends StatelessWidget {
       key: const ValueKey('otp'),
       padding: const EdgeInsets.all(24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 16),
-          const Text('Verification Code', style: TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: Color(0xFF3F2413))),
+          Text(
+            l10n.verificationCodeTitle,
+            style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: Color(0xFF3F2413)),
+          ),
           const SizedBox(height: 10),
-          const Text(
-            "We've sent a 6-digit code to your mobile device.",
+          Text(
+            phoneMasked != null && phoneMasked!.isNotEmpty ? l10n.otpSentToPhone(phoneMasked!) : l10n.otpSentGeneric,
             textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14),
           ),
           const SizedBox(height: 26),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(
-              6,
-              (index) => Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
-                  color: const Color(0xFFF3E4D9),
-                ),
-                child: const Center(
-                  child: CircleAvatar(radius: 3.5, backgroundColor: Color(0xFF5E6574)),
-                ),
+          TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 28, letterSpacing: 8, fontWeight: FontWeight.w600),
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: InputDecoration(
+              counterText: '',
+              hintText: '• • • • • •',
+              filled: true,
+              fillColor: const Color(0xFFF3E4D9),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(22),
+                borderSide: BorderSide.none,
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: (resendSecondsLeft > 0 || isLoading) ? null : onResend,
+            child: Text(
+              resendSecondsLeft > 0 ? l10n.resendCodeSeconds(resendSecondsLeft) : l10n.resendCode,
+            ),
+          ),
+          if (errorText != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              errorText!,
+              style: const TextStyle(color: Color(0xFFB3261E), fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+          ],
           const Spacer(),
-          _PrimaryButton(label: 'Verify Code', onTap: onNext),
+          _PrimaryButton(
+            label: l10n.verifyCodeButton,
+            onTap: isLoading ? null : onVerify,
+            isLoading: isLoading,
+          ),
         ],
       ),
     );
@@ -246,61 +912,193 @@ class _OtpStep extends StatelessWidget {
 
 class _ProfileStep extends StatelessWidget {
   const _ProfileStep({
+    required this.l10n,
     required this.usernameController,
-    required this.bioController,
-    required this.onNext,
+    required this.prenomController,
+    required this.nomController,
+    required this.mailController,
+    required this.onPickPhoto,
+    required this.onClearPhoto,
+    required this.onSkip,
+    required this.onFinish,
+    this.profilePhotoBytes,
+    this.isNewCustomer = false,
+    this.errorText,
+    this.isLoading = false,
   });
 
+  final AppLocalizations l10n;
   final TextEditingController usernameController;
-  final TextEditingController bioController;
-  final VoidCallback onNext;
+  final TextEditingController prenomController;
+  final TextEditingController nomController;
+  final TextEditingController mailController;
+  final Uint8List? profilePhotoBytes;
+  final Future<void> Function() onPickPhoto;
+  final VoidCallback onClearPhoto;
+  final VoidCallback onSkip;
+  final VoidCallback onFinish;
+  final bool isNewCustomer;
+  final String? errorText;
+  final bool isLoading;
+
+  static const _fill = Color(0xFFF3E4D9);
+
+  InputDecoration _fieldDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: _fill,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(22),
+        borderSide: BorderSide.none,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final hasPhoto = profilePhotoBytes != null && profilePhotoBytes!.isNotEmpty;
+
     return Padding(
       key: const ValueKey('profile'),
       padding: const EdgeInsets.all(24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 16),
-          const CircleAvatar(
-            radius: 46,
-            backgroundColor: Color(0xFFF2DDCF),
-            child: Icon(Icons.camera_alt, color: Color(0xFFC45A12)),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: isLoading ? null : onSkip,
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFF6D513E)),
+              child: Text(l10n.skipButton),
+            ),
           ),
-          const SizedBox(height: 22),
-          const Text('Setup your craft', style: TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: Color(0xFF3F2413))),
-          const SizedBox(height: 12),
-          const Text('Share your name and vibe with the community.'),
-          const SizedBox(height: 26),
-          TextField(
-            controller: usernameController,
-            decoration: InputDecoration(
-              hintText: 'eg. NeoArtisan_24',
-              filled: true,
-              fillColor: const Color(0xFFF3E4D9),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(22),
-                borderSide: BorderSide.none,
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    isNewCustomer ? l10n.profileWelcomeNew : l10n.profileWelcomeComplete,
+                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: Color(0xFF3F2413)),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.profileAllFieldsOptional,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF6D513E)),
+                  ),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Material(
+                          color: const Color(0xFFF2DDCF),
+                          shape: const CircleBorder(),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: isLoading ? null : () => onPickPhoto(),
+                            child: SizedBox(
+                              width: 112,
+                              height: 112,
+                              child: hasPhoto
+                                  ? Image.memory(
+                                      profilePhotoBytes!,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : const Icon(Icons.add_photo_alternate_outlined, size: 48, color: Color(0xFFC45A12)),
+                            ),
+                          ),
+                        ),
+                        if (hasPhoto)
+                          Positioned(
+                            right: -4,
+                            bottom: -4,
+                            child: Material(
+                              color: const Color(0xFFF26D21),
+                              shape: const CircleBorder(),
+                              child: IconButton(
+                                icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                                onPressed: isLoading ? null : onClearPhoto,
+                                tooltip: l10n.removePhotoTooltip,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: isLoading ? null : () => onPickPhoto(),
+                    child: Text(l10n.chooseFromGallery),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.labelUsername, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: usernameController,
+                    textInputAction: TextInputAction.next,
+                    decoration: _fieldDecoration(l10n.hintUsername),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.labelFirstName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: prenomController,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    decoration: _fieldDecoration(l10n.hintFirstName),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.labelLastName, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: nomController,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    decoration: _fieldDecoration(l10n.hintLastName),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.labelEmail, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: mailController,
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    textInputAction: TextInputAction.done,
+                    decoration: _fieldDecoration(l10n.hintEmail),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      errorText!,
+                      style: const TextStyle(color: Color(0xFFB3261E), fontSize: 13),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: bioController,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: 'Tell us about your creative journey...',
-              filled: true,
-              fillColor: const Color(0xFFF3E4D9),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(22),
-                borderSide: BorderSide.none,
-              ),
-            ),
+          _PrimaryButton(
+            label: l10n.saveButton,
+            onTap: isLoading ? null : onFinish,
+            isLoading: isLoading,
           ),
-          const Spacer(),
-          _PrimaryButton(label: 'Finish Setup', onTap: onNext),
         ],
       ),
     );
@@ -308,10 +1106,15 @@ class _ProfileStep extends StatelessWidget {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({required this.label, required this.onTap});
+  const _PrimaryButton({
+    required this.label,
+    required this.onTap,
+    this.isLoading = false,
+  });
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -323,10 +1126,17 @@ class _PrimaryButton extends StatelessWidget {
           backgroundColor: const Color(0xFFF26D21),
           foregroundColor: Colors.white,
           elevation: 2,
+          disabledBackgroundColor: const Color(0xFFF26D21).withValues(alpha: 0.5),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
           padding: const EdgeInsets.symmetric(vertical: 18),
         ),
-        child: Text(label, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        child: isLoading
+            ? const SizedBox(
+                height: 22,
+                width: 22,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : Text(label, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
       ),
     );
   }
