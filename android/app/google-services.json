@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "174481584112",
+    "project_id": "e-mall-ce547",
+    "storage_bucket": "e-mall-ce547.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:174481584112:android:2dd373d6209a426bce7735",
+        "android_client_info": {
+          "package_name": "com.example.e_mall"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyNbhJZPd3uOfj8TIcJnDFLUSi4kOoZtU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
