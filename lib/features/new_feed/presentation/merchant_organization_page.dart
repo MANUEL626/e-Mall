@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/catalog/customer_catalog_service.dart';
+import '../../../services/catalog/catalog_service.dart';
 import '../../../core/config/app_config.dart';
-import '../../../core/organizations/customer_organization_service.dart';
-import '../../../core/organizations/organization_models.dart';
+import '../../../core/ui/app_feedback.dart';
+import '../../../services/organizations/organizations_service.dart';
 import '../../../l10n/app_localizations.dart';
 
 /// Fiche marchand : `GET .../customers/organizations/{id}` + abonnement / désabonnement.
@@ -83,13 +83,13 @@ class _MerchantOrganizationPageState extends State<MerchantOrganizationPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.message;
+        _error = AppFeedback.userErrorMessage(e.message);
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = AppFeedback.userErrorMessage(e);
       });
     }
   }
@@ -118,9 +118,7 @@ class _MerchantOrganizationPageState extends State<MerchantOrganizationPage> {
       await _load();
     } on CatalogApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
     }
   }
 

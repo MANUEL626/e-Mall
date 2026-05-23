@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/catalog/customer_catalog_service.dart';
-import '../../../core/catalog/product_image_url.dart';
-import '../../../core/commerce/customer_shopping_service.dart';
-import '../../../core/commerce/shopping_cart_models.dart';
+import '../../../services/cart/cart_service.dart';
+import '../../../services/catalog/catalog_service.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/ui/app_feedback.dart';
 import 'cart_detail_page.dart';
 
 /// Liste des paniers par boutique (`GET /api/v1/customers/carts`).
@@ -65,14 +64,14 @@ class _CartPageState extends State<CartPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.message;
+        _error = AppFeedback.userErrorMessage(e.message);
         _carts = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = AppFeedback.userErrorMessage(e);
         _carts = null;
       });
     }

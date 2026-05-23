@@ -18,6 +18,16 @@ class AppLocalizationsFr extends AppLocalizations {
   String get languageEnglish => 'English';
 
   @override
+  String get languageGerman => 'Deutsch';
+
+  @override
+  String get languageChinese => '中文';
+
+  @override
+  String get languageSystemDefault =>
+      'Par défaut : langue du téléphone, français si non supportée';
+
+  @override
   String get onboardingHandpicked => 'Sélectionné';
 
   @override
@@ -88,6 +98,46 @@ class AppLocalizationsFr extends AppLocalizations {
   String get profileAllFieldsOptional => 'Tous les champs sont facultatifs.';
 
   @override
+  String get profilePrefsTitle => 'Préférences';
+
+  @override
+  String get profilePrefsSubtitle =>
+      'Utilisées pour personnaliser les produits, la langue et la livraison.';
+
+  @override
+  String get labelDefaultLongitude => 'Longitude par défaut';
+
+  @override
+  String get labelDefaultLatitude => 'Latitude par défaut';
+
+  @override
+  String get labelInterests => 'Intérêts';
+
+  @override
+  String get interestElectronics => 'Électronique';
+
+  @override
+  String get interestAppliances => 'Électroménager';
+
+  @override
+  String get interestClothing => 'Mode';
+
+  @override
+  String get interestFood => 'Alimentation';
+
+  @override
+  String get interestBeauty => 'Beauté';
+
+  @override
+  String get interestSports => 'Sport';
+
+  @override
+  String get interestHome => 'Maison';
+
+  @override
+  String get interestOther => 'Autre';
+
+  @override
   String get removePhotoTooltip => 'Retirer la photo';
 
   @override
@@ -148,6 +198,10 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get errorInvalidEmail => 'Adresse e-mail invalide.';
+
+  @override
+  String get errorInvalidCoordinates =>
+      'Indiquez une longitude et une latitude valides.';
 
   @override
   String get snackAddedToCart => 'Ajouté au panier';
@@ -330,6 +384,39 @@ class AppLocalizationsFr extends AppLocalizations {
   String get meOrderHistorySubtitle => 'Suivre et consulter vos achats';
 
   @override
+  String get meProfileFallback => 'Profil';
+
+  @override
+  String get meCompleteProfile => 'Complétez votre profil';
+
+  @override
+  String get meOrdersStat => 'Commandes';
+
+  @override
+  String get meWishlistStat => 'Favoris';
+
+  @override
+  String get mePointsStat => 'Points';
+
+  @override
+  String get meAccountTitle => 'Mon compte';
+
+  @override
+  String get meAccountSubtitle => 'Portefeuille, paiements et facturation';
+
+  @override
+  String get meWishlistTitle => 'Mes favoris';
+
+  @override
+  String get meWishlistSubtitle => 'Vos produits favoris';
+
+  @override
+  String get meCartTitle => 'Mon panier';
+
+  @override
+  String get meCartSubtitle => 'Articles prêts pour la commande';
+
+  @override
   String get orderConfirmReceiptTitle => 'Confirmer la réception';
 
   @override
@@ -357,6 +444,70 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get orderScannerWebHint =>
       'Le scan par caméra peut être limité dans le navigateur — collez le contenu du QR ci-dessous si besoin.';
+
+  @override
+  String get settingsTitle => 'Paramètres';
+
+  @override
+  String get editProfileTooltip => 'Modifier le profil';
+
+  @override
+  String get settingsProfileSection => 'Profil';
+
+  @override
+  String get settingsPreferencesSection => 'Préférences';
+
+  @override
+  String get settingsAccountSection => 'Compte';
+
+  @override
+  String get settingsInterestsSection => 'Centres d’intérêt';
+
+  @override
+  String get settingsNameLabel => 'Nom';
+
+  @override
+  String get settingsPhoneLabel => 'Téléphone';
+
+  @override
+  String get settingsLocationLabel => 'Localisation';
+
+  @override
+  String get settingsRegionLabel => 'Région';
+
+  @override
+  String get settingsLanguageLabel => 'Langue';
+
+  @override
+  String get settingsUndefined => 'Non défini';
+
+  @override
+  String get profileUpdateTitle => 'Modifier le profil';
+
+  @override
+  String get profileUpdateSaveTooltip => 'Enregistrer';
+
+  @override
+  String get profileUpdateGenericError =>
+      'Impossible de mettre le profil à jour. Réessayez.';
+
+  @override
+  String get profileUpdateConflictError =>
+      'Email ou nom d’utilisateur déjà utilisé. Choisissez une autre valeur.';
+
+  @override
+  String get profileUpdatePhotoError => 'Impossible de choisir cette photo.';
+
+  @override
+  String get profileUpdateLocationTitle => 'Localisation';
+
+  @override
+  String get profileUpdateLocationSubtitle =>
+      'Utilisez votre position actuelle ou touchez la carte.';
+
+  @override
+  String get profileUpdateExpiredSession =>
+      'Session expirée. Reconnectez-vous.';
 
   @override
   String get signOutMenuTitle => 'Se déconnecter';

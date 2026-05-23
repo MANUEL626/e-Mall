@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/catalog/customer_catalog_service.dart';
-import '../../../core/catalog/product_image_url.dart';
-import '../../../core/commerce/customer_sale_models.dart';
-import '../../../core/commerce/customer_sale_service.dart';
+import '../../../services/catalog/catalog_service.dart';
+import '../../../services/orders/orders_service.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/ui/app_feedback.dart';
 import '../../../l10n/app_localizations.dart';
 import 'confirm_receipt_scan_page.dart';
 
@@ -112,13 +111,13 @@ class _CustomerOrdersPageState extends State<CustomerOrdersPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.message;
+        _error = AppFeedback.userErrorMessage(e.message);
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = AppFeedback.userErrorMessage(e);
       });
     }
   }

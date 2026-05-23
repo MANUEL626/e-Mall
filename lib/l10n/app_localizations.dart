@@ -5,8 +5,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
+import 'app_localizations_de.dart';
 import 'app_localizations_en.dart';
 import 'app_localizations_fr.dart';
+import 'app_localizations_zh.dart';
 
 // ignore_for_file: type=lint
 
@@ -94,8 +96,10 @@ abstract class AppLocalizations {
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
+    Locale('de'),
     Locale('en'),
     Locale('fr'),
+    Locale('zh'),
   ];
 
   /// No description provided for @languageTitle.
@@ -115,6 +119,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'English'**
   String get languageEnglish;
+
+  /// No description provided for @languageGerman.
+  ///
+  /// In en, this message translates to:
+  /// **'Deutsch'**
+  String get languageGerman;
+
+  /// No description provided for @languageChinese.
+  ///
+  /// In en, this message translates to:
+  /// **'中文'**
+  String get languageChinese;
+
+  /// No description provided for @languageSystemDefault.
+  ///
+  /// In en, this message translates to:
+  /// **'Default: your phone language, French if unsupported'**
+  String get languageSystemDefault;
 
   /// No description provided for @onboardingHandpicked.
   ///
@@ -242,6 +264,84 @@ abstract class AppLocalizations {
   /// **'All fields are optional.'**
   String get profileAllFieldsOptional;
 
+  /// No description provided for @profilePrefsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferences'**
+  String get profilePrefsTitle;
+
+  /// No description provided for @profilePrefsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Used to personalize products, language and delivery defaults.'**
+  String get profilePrefsSubtitle;
+
+  /// No description provided for @labelDefaultLongitude.
+  ///
+  /// In en, this message translates to:
+  /// **'Default longitude'**
+  String get labelDefaultLongitude;
+
+  /// No description provided for @labelDefaultLatitude.
+  ///
+  /// In en, this message translates to:
+  /// **'Default latitude'**
+  String get labelDefaultLatitude;
+
+  /// No description provided for @labelInterests.
+  ///
+  /// In en, this message translates to:
+  /// **'Interests'**
+  String get labelInterests;
+
+  /// No description provided for @interestElectronics.
+  ///
+  /// In en, this message translates to:
+  /// **'Electronics'**
+  String get interestElectronics;
+
+  /// No description provided for @interestAppliances.
+  ///
+  /// In en, this message translates to:
+  /// **'Appliances'**
+  String get interestAppliances;
+
+  /// No description provided for @interestClothing.
+  ///
+  /// In en, this message translates to:
+  /// **'Clothing'**
+  String get interestClothing;
+
+  /// No description provided for @interestFood.
+  ///
+  /// In en, this message translates to:
+  /// **'Food'**
+  String get interestFood;
+
+  /// No description provided for @interestBeauty.
+  ///
+  /// In en, this message translates to:
+  /// **'Beauty'**
+  String get interestBeauty;
+
+  /// No description provided for @interestSports.
+  ///
+  /// In en, this message translates to:
+  /// **'Sports'**
+  String get interestSports;
+
+  /// No description provided for @interestHome.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get interestHome;
+
+  /// No description provided for @interestOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Other'**
+  String get interestOther;
+
   /// No description provided for @removePhotoTooltip.
   ///
   /// In en, this message translates to:
@@ -355,6 +455,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Invalid email address.'**
   String get errorInvalidEmail;
+
+  /// No description provided for @errorInvalidCoordinates.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter valid longitude and latitude values.'**
+  String get errorInvalidCoordinates;
 
   /// No description provided for @snackAddedToCart.
   ///
@@ -674,6 +780,72 @@ abstract class AppLocalizations {
   /// **'Track and review your purchases'**
   String get meOrderHistorySubtitle;
 
+  /// No description provided for @meProfileFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get meProfileFallback;
+
+  /// No description provided for @meCompleteProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete your profile'**
+  String get meCompleteProfile;
+
+  /// No description provided for @meOrdersStat.
+  ///
+  /// In en, this message translates to:
+  /// **'Orders'**
+  String get meOrdersStat;
+
+  /// No description provided for @meWishlistStat.
+  ///
+  /// In en, this message translates to:
+  /// **'Wishlist'**
+  String get meWishlistStat;
+
+  /// No description provided for @mePointsStat.
+  ///
+  /// In en, this message translates to:
+  /// **'Points'**
+  String get mePointsStat;
+
+  /// No description provided for @meAccountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My account'**
+  String get meAccountTitle;
+
+  /// No description provided for @meAccountSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wallet, payments, and billing'**
+  String get meAccountSubtitle;
+
+  /// No description provided for @meWishlistTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My wishlist'**
+  String get meWishlistTitle;
+
+  /// No description provided for @meWishlistSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your favorite products'**
+  String get meWishlistSubtitle;
+
+  /// No description provided for @meCartTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'My cart'**
+  String get meCartTitle;
+
+  /// No description provided for @meCartSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Items ready for checkout'**
+  String get meCartSubtitle;
+
   /// No description provided for @orderConfirmReceiptTitle.
   ///
   /// In en, this message translates to:
@@ -728,6 +900,126 @@ abstract class AppLocalizations {
   /// **'Camera scanning may be limited in the browser — paste the QR payload below if needed.'**
   String get orderScannerWebHint;
 
+  /// No description provided for @settingsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// No description provided for @editProfileTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get editProfileTooltip;
+
+  /// No description provided for @settingsProfileSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get settingsProfileSection;
+
+  /// No description provided for @settingsPreferencesSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferences'**
+  String get settingsPreferencesSection;
+
+  /// No description provided for @settingsAccountSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Account'**
+  String get settingsAccountSection;
+
+  /// No description provided for @settingsInterestsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Interests'**
+  String get settingsInterestsSection;
+
+  /// No description provided for @settingsNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get settingsNameLabel;
+
+  /// No description provided for @settingsPhoneLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Phone'**
+  String get settingsPhoneLabel;
+
+  /// No description provided for @settingsLocationLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get settingsLocationLabel;
+
+  /// No description provided for @settingsRegionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Region'**
+  String get settingsRegionLabel;
+
+  /// No description provided for @settingsLanguageLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get settingsLanguageLabel;
+
+  /// No description provided for @settingsUndefined.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set'**
+  String get settingsUndefined;
+
+  /// No description provided for @profileUpdateTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit profile'**
+  String get profileUpdateTitle;
+
+  /// No description provided for @profileUpdateSaveTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get profileUpdateSaveTooltip;
+
+  /// No description provided for @profileUpdateGenericError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to update the profile. Try again.'**
+  String get profileUpdateGenericError;
+
+  /// No description provided for @profileUpdateConflictError.
+  ///
+  /// In en, this message translates to:
+  /// **'Email or username already used. Choose another value.'**
+  String get profileUpdateConflictError;
+
+  /// No description provided for @profileUpdatePhotoError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to choose this photo.'**
+  String get profileUpdatePhotoError;
+
+  /// No description provided for @profileUpdateLocationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Location'**
+  String get profileUpdateLocationTitle;
+
+  /// No description provided for @profileUpdateLocationSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Use your current position or tap the map.'**
+  String get profileUpdateLocationSubtitle;
+
+  /// No description provided for @profileUpdateExpiredSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Session expired. Sign in again.'**
+  String get profileUpdateExpiredSession;
+
   /// No description provided for @signOutMenuTitle.
   ///
   /// In en, this message translates to:
@@ -776,7 +1068,7 @@ class _AppLocalizationsDelegate
 
   @override
   bool isSupported(Locale locale) =>
-      <String>['en', 'fr'].contains(locale.languageCode);
+      <String>['de', 'en', 'fr', 'zh'].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -785,10 +1077,14 @@ class _AppLocalizationsDelegate
 AppLocalizations lookupAppLocalizations(Locale locale) {
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
+    case 'de':
+      return AppLocalizationsDe();
     case 'en':
       return AppLocalizationsEn();
     case 'fr':
       return AppLocalizationsFr();
+    case 'zh':
+      return AppLocalizationsZh();
   }
 
   throw FlutterError(

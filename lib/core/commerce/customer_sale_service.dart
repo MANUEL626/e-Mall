@@ -192,12 +192,16 @@ class CustomerSaleService {
     String? locale,
     double? defaultLongitude,
     double? defaultLatitude,
+    String? country,
+    List<String>? interests,
     Map<String, dynamic>? extra,
   }) async {
     final patch = CustomerMeParams.patchBody(
       locale: locale,
       defaultLongitude: defaultLongitude,
       defaultLatitude: defaultLatitude,
+      country: country,
+      interests: interests,
       extra: extra,
     );
     if (patch.isEmpty) {

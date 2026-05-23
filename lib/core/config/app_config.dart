@@ -20,6 +20,13 @@ class AppConfig {
     defaultValue: '',
   );
 
+  /// Base HTTPS publique utilisée pour les liens partageables.
+  /// Elle doit pointer vers une page/route web qui ouvre l'app ou redirige vers l'accueil.
+  static const String shareBaseUrl = String.fromEnvironment(
+    'SHARE_BASE_URL',
+    defaultValue: apiBaseUrl,
+  );
+
   /// Bucket Supabase Storage pour les photos de profil (`upload` + URL dans `profilepicture`).
   /// Créer le bucket dans le dashboard et le rendre public si tu utilises `getPublicUrl`.
   static const String profilePhotoBucket = String.fromEnvironment(

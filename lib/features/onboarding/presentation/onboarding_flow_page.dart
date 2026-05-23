@@ -5,16 +5,15 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/auth/bootstrap_customer_result.dart';
-import '../../../core/auth/customer_auth_service.dart';
-import '../../../core/auth/customer_profile_store.dart';
+import '../../../services/auth/auth_service.dart';
+import '../../../services/settings/settings_service.dart';
+import '../../../services/users/users_service.dart';
 import '../../../core/branding/app_branding.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/location/location_picker.dart';
 import '../../../core/locale/app_locale_controller.dart';
 import '../../../core/phone/phone_country.dart';
 import '../../../l10n/app_localizations.dart';
-import '../../../core/storage/profile_photo_storage.dart';
-import '../../../core/auth/auth_gate_service.dart';
 
 class OnboardingFlowPage extends StatefulWidget {
   const OnboardingFlowPage({super.key});
@@ -32,8 +31,12 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
   final _prenomController = TextEditingController();
   final _nomController = TextEditingController();
   final _mailController = TextEditingController();
+  final _countryController = TextEditingController(text: defaultPhoneCountry.iso2);
+  final _longitudeController = TextEditingController();
+  final _latitudeController = TextEditingController();
 
   PhoneCountry _selectedPhoneCountry = defaultPhoneCountry;
+  final Set<String> _selectedInterestCodes = <String>{};
 
   int _step = 0;
   String? _phoneE164;
@@ -66,12 +69,16 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
     if (sameDialCount > 1 && digits == match.dialCode) {
       return;
     }
-    setState(() => _selectedPhoneCountry = match);
+    setState(() {
+      _selectedPhoneCountry = match;
+      _countryController.text = match.iso2;
+    });
   }
 
   void _selectPhoneCountry(PhoneCountry country) {
     setState(() {
       _selectedPhoneCountry = country;
+      _countryController.text = country.iso2;
       _dialDigitsController.text = country.dialCode;
       _dialDigitsController.selection = TextSelection.collapsed(offset: _dialDigitsController.text.length);
     });
@@ -106,6 +113,9 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
     _prenomController.dispose();
     _nomController.dispose();
     _mailController.dispose();
+    _countryController.dispose();
+    _longitudeController.dispose();
+    _latitudeController.dispose();
     super.dispose();
   }
 
@@ -216,6 +226,11 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
         profile: const <String, dynamic>{},
       );
       await CustomerProfileStore.instance.setProfile(bootstrap);
+      if (bootstrap.isNewCustomer) {
+        await _saveLocaleParam(accessToken: session.accessToken);
+      } else {
+        await _loadCustomerParams(accessToken: session.accessToken);
+      }
       if (!mounted) return;
       setState(() {
         _bootstrapResult = bootstrap;
@@ -322,21 +337,25 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
       body['username'] = username;
     }
     if (prenom.isNotEmpty) {
-      body['first_name'] = prenom;
+      body['prenom'] = prenom;
     }
     if (nom.isNotEmpty) {
-      body['last_name'] = nom;
+      body['nom'] = nom;
     }
     if (mail.isNotEmpty) {
       body['mail'] = mail;
     }
 
-    if (body.isEmpty && !hasPhoto) {
-      _goHome();
-      return;
-    }
     if (!AppConfig.isApiConfigured) {
       setState(() => _stepError = AppLocalizations.of(context)!.errorApiBaseUrlProfile);
+      return;
+    }
+
+    final longitude = _parseOptionalCoordinate(_longitudeController.text);
+    final latitude = _parseOptionalCoordinate(_latitudeController.text);
+    if ((_longitudeController.text.trim().isNotEmpty && longitude == null) ||
+        (_latitudeController.text.trim().isNotEmpty && latitude == null)) {
+      setState(() => _stepError = AppLocalizations.of(context)!.errorInvalidCoordinates);
       return;
     }
 
@@ -349,15 +368,16 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
         final url = await ProfilePhotoStorage.uploadProfilePhoto(photo);
         body['profilepicture'] = url;
       }
-      if (body.isEmpty) {
-        if (!mounted) return;
-        setState(() => _profileLoading = false);
-        _goHome();
-        return;
+      if (body.isNotEmpty) {
+        final updated =
+            await CustomerAuthService.instance.updateCustomerProfile(session, profile: body);
+        await CustomerProfileStore.instance.setProfile(updated);
       }
-      final updated =
-          await CustomerAuthService.instance.updateCustomerProfile(session, profile: body);
-      await CustomerProfileStore.instance.setProfile(updated);
+      await _saveCustomerParams(
+        accessToken: session.accessToken,
+        longitude: longitude,
+        latitude: latitude,
+      );
       if (!mounted) return;
       setState(() => _profileLoading = false);
       _goHome();
@@ -376,8 +396,71 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
     }
   }
 
-  void _skipProfileStep() {
+  double? _parseOptionalCoordinate(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return double.tryParse(trimmed.replaceAll(',', '.'));
+  }
+
+  Future<void> _saveCustomerParams({
+    required String accessToken,
+    double? longitude,
+    double? latitude,
+  }) async {
+    final params = await CustomerSaleService.instance.patchMyParams(
+      accessToken: accessToken,
+      locale: AppLocaleController.instance.locale.languageCode,
+      defaultLongitude: longitude,
+      defaultLatitude: latitude,
+      country: _countryController.text.trim().isEmpty
+          ? null
+          : _countryController.text.trim().toUpperCase(),
+      interests: _selectedInterestCodes.toList(growable: false),
+    );
+    await CustomerParamsStore.instance.setParams(params);
+    await _applyLocaleFromParams(params.locale);
+  }
+
+  Future<void> _saveLocaleParam({required String accessToken}) async {
+    try {
+      final params = await CustomerSaleService.instance.patchMyParams(
+        accessToken: accessToken,
+        locale: AppLocaleController.instance.locale.languageCode,
+      );
+      await CustomerParamsStore.instance.setParams(params);
+      await _applyLocaleFromParams(params.locale);
+    } catch (_) {}
+  }
+
+  Future<void> _loadCustomerParams({required String accessToken}) async {
+    try {
+      final params = await CustomerSaleService.instance.getMyParams(
+        accessToken: accessToken,
+      );
+      await CustomerParamsStore.instance.setParams(params);
+      await _applyLocaleFromParams(params.locale);
+    } catch (_) {}
+  }
+
+  Future<void> _applyLocaleFromParams(String? locale) async {
+    if (!AppLocaleController.isSupported(locale)) return;
+    await AppLocaleController.instance.setLocale(Locale(locale!.toLowerCase()));
+  }
+
+  Future<void> _skipProfileStep() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null && AppConfig.isApiConfigured) {
+      await _saveLocaleParam(accessToken: session.accessToken);
+    }
     _goHome();
+  }
+
+  void _toggleInterest(String code) {
+    setState(() {
+      if (!_selectedInterestCodes.add(code)) {
+        _selectedInterestCodes.remove(code);
+      }
+    });
   }
 
   Future<void> _goHome() async {
@@ -430,6 +513,22 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
                     Navigator.pop(ctx);
                   },
                 ),
+                ListTile(
+                  leading: const Icon(Icons.flag_outlined, color: Color(0xFF3F2413)),
+                  title: Text(l10n.languageGerman),
+                  onTap: () {
+                    unawaited(AppLocaleController.instance.setLocale(const Locale('de')));
+                    Navigator.pop(ctx);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.flag_outlined, color: Color(0xFF3F2413)),
+                  title: Text(l10n.languageChinese),
+                  onTap: () {
+                    unawaited(AppLocaleController.instance.setLocale(const Locale('zh')));
+                    Navigator.pop(ctx);
+                  },
+                ),
               ],
             ),
           ),
@@ -442,7 +541,10 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final pages = <Widget>[
-      _WelcomeStep(l10n: l10n, onNext: _nextWelcome),
+      _WelcomeStep(
+        l10n: l10n,
+        onNext: _nextWelcome,
+      ),
       _PhoneStep(
         l10n: l10n,
         dialDigitsController: _dialDigitsController,
@@ -470,6 +572,11 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
         prenomController: _prenomController,
         nomController: _nomController,
         mailController: _mailController,
+        countryController: _countryController,
+        longitudeController: _longitudeController,
+        latitudeController: _latitudeController,
+        selectedInterestCodes: _selectedInterestCodes,
+        onToggleInterest: _toggleInterest,
         profilePhotoBytes: _profilePhotoBytes,
         onPickPhoto: _pickProfilePhoto,
         onClearPhoto: _clearProfilePhoto,
@@ -492,16 +599,24 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
               ),
             ),
           ),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: IconButton(
-                icon: const Icon(Icons.language_rounded, color: Color(0xFF3F2413)),
-                tooltip: l10n.languageTitle,
-                onPressed: () => _openLanguagePicker(context),
+          if (_step == 0)
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 4),
+                  child: IconButton.filledTonal(
+                    icon: const Icon(Icons.language_rounded),
+                    tooltip: l10n.languageTitle,
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFF8F3),
+                      foregroundColor: const Color(0xFF3F2413),
+                    ),
+                    onPressed: () => _openLanguagePicker(context),
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -509,7 +624,10 @@ class _OnboardingFlowPageState extends State<OnboardingFlowPage> {
 }
 
 class _WelcomeStep extends StatelessWidget {
-  const _WelcomeStep({required this.l10n, required this.onNext});
+  const _WelcomeStep({
+    required this.l10n,
+    required this.onNext,
+  });
 
   final AppLocalizations l10n;
   final VoidCallback onNext;
@@ -521,71 +639,83 @@ class _WelcomeStep extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: Container(
-              height: 320,
-              width: double.infinity,
-              color: const Color(0xFFEAD9B7),
-              child: Stack(
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
                 children: [
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(28),
-                      child: AppBranding.logoImage(
-                        height: 220,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.bottomRight,
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
                     child: Container(
-                      margin: const EdgeInsets.all(14),
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFC45A12),
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      height: 300,
+                      width: double.infinity,
+                      color: const Color(0xFFEAD9B7),
+                      child: Stack(
                         children: [
-                          const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 16),
-                          const SizedBox(width: 8),
-                          Text(
-                            l10n.onboardingHandpicked,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: AppBranding.logoImage(height: 210),
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.bottomRight,
+                            child: Container(
+                              margin: const EdgeInsets.all(14),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFC45A12),
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    l10n.onboardingHandpicked,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
+                  const SizedBox(height: 28),
+                  Text(
+                    l10n.onboardingBrandTitle,
+                    style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w700, color: Color(0xFF3F2413)),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    l10n.languageSystemDefault,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF6D513E)),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    l10n.onboardingWelcomeSubtitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 20, height: 1.4, color: Color(0xFF6D513E)),
+                  ),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 32),
-          Text(
-            l10n.onboardingBrandTitle,
-            style: const TextStyle(fontSize: 46, fontWeight: FontWeight.w700, color: Color(0xFF3F2413)),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            l10n.onboardingWelcomeSubtitle,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 20, height: 1.4, color: Color(0xFF6D513E)),
-          ),
-          const Spacer(),
           _PrimaryButton(label: l10n.continueButton, onTap: onNext),
         ],
       ),
     );
   }
+
 }
 
 class _PhoneStep extends StatelessWidget {
@@ -683,7 +813,7 @@ class _PhoneStep extends StatelessWidget {
                     backgroundColor: Colors.white,
                     child: Padding(
                       padding: const EdgeInsets.all(6),
-                      child: AppBranding.logoImage(height: 40, fit: BoxFit.contain),
+                      child: AppBranding.appIcon(size: 40),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -917,6 +1047,11 @@ class _ProfileStep extends StatelessWidget {
     required this.prenomController,
     required this.nomController,
     required this.mailController,
+    required this.countryController,
+    required this.longitudeController,
+    required this.latitudeController,
+    required this.selectedInterestCodes,
+    required this.onToggleInterest,
     required this.onPickPhoto,
     required this.onClearPhoto,
     required this.onSkip,
@@ -932,10 +1067,15 @@ class _ProfileStep extends StatelessWidget {
   final TextEditingController prenomController;
   final TextEditingController nomController;
   final TextEditingController mailController;
+  final TextEditingController countryController;
+  final TextEditingController longitudeController;
+  final TextEditingController latitudeController;
+  final Set<String> selectedInterestCodes;
+  final void Function(String code) onToggleInterest;
   final Uint8List? profilePhotoBytes;
   final Future<void> Function() onPickPhoto;
   final VoidCallback onClearPhoto;
-  final VoidCallback onSkip;
+  final Future<void> Function() onSkip;
   final VoidCallback onFinish;
   final bool isNewCustomer;
   final String? errorText;
@@ -955,6 +1095,76 @@ class _ProfileStep extends StatelessWidget {
     );
   }
 
+  PhoneCountry _countryFromController() {
+    final iso = countryController.text.trim().toUpperCase();
+    return kPhoneCountriesDisplay.firstWhere(
+      (country) => country.iso2 == iso,
+      orElse: () => defaultPhoneCountry,
+    );
+  }
+
+  Future<void> _openSupportedCountryPicker(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFFFF8F3),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final maxH = MediaQuery.sizeOf(ctx).height * 0.72;
+        final currentIso = countryController.text.trim().toUpperCase();
+        return SafeArea(
+          child: SizedBox(
+            height: maxH,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Text(
+                    l10n.chooseCountryTitle,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF3F2413),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: kPhoneCountriesDisplay.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
+                    itemBuilder: (_, i) {
+                      final country = kPhoneCountriesDisplay[i];
+                      final selected = country.iso2 == currentIso;
+                      return ListTile(
+                        leading: Text(country.emoji, style: const TextStyle(fontSize: 28)),
+                        title: Text(country.name),
+                        subtitle: Text(
+                          '${country.iso2} - ${country.displayDial}',
+                          style: const TextStyle(color: Color(0xFF6D513E)),
+                        ),
+                        trailing: selected
+                            ? const Icon(Icons.check_circle, color: Color(0xFFC45A12))
+                            : null,
+                        onTap: () {
+                          countryController.text = country.iso2;
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasPhoto = profilePhotoBytes != null && profilePhotoBytes!.isNotEmpty;
@@ -968,7 +1178,7 @@ class _ProfileStep extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: isLoading ? null : onSkip,
+              onPressed: isLoading ? null : () => unawaited(onSkip()),
               style: TextButton.styleFrom(foregroundColor: const Color(0xFF6D513E)),
               child: Text(l10n.skipButton),
             ),
@@ -1082,6 +1292,100 @@ class _ProfileStep extends StatelessWidget {
                     textInputAction: TextInputAction.done,
                     decoration: _fieldDecoration(l10n.hintEmail),
                   ),
+                  const SizedBox(height: 20),
+                  Text(
+                    l10n.profilePrefsTitle,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF3F2413),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.profilePrefsSubtitle,
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF6D513E)),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.labelCountry, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 6),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: countryController,
+                    builder: (context, _, __) {
+                      final country = _countryFromController();
+                      return Material(
+                        color: _fill,
+                        borderRadius: BorderRadius.circular(22),
+                        child: InkWell(
+                          onTap: isLoading ? null : () => _openSupportedCountryPicker(context),
+                          borderRadius: BorderRadius.circular(22),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            child: Row(
+                              children: [
+                                Text(country.emoji, style: const TextStyle(fontSize: 26)),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        country.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 16,
+                                          color: Color(0xFF3F2413),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${country.iso2} - ${country.displayDial}',
+                                        style: const TextStyle(fontSize: 14, color: Color(0xFF6D513E)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF6D513E)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  LocationPicker(
+                    longitudeController: longitudeController,
+                    latitudeController: latitudeController,
+                    title: 'Position par defaut',
+                    subtitle: 'Utilisez votre position actuelle ou touchez la carte.',
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(l10n.labelInterests, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _InterestOption.all.map((option) {
+                      final selected = selectedInterestCodes.contains(option.code);
+                      return FilterChip(
+                        selected: selected,
+                        label: Text(option.label(l10n)),
+                        selectedColor: const Color(0xFFF2C6A8),
+                        checkmarkColor: const Color(0xFFC45A12),
+                        backgroundColor: const Color(0xFFF3E4D9),
+                        side: BorderSide(
+                          color: selected ? const Color(0xFFC45A12) : Colors.transparent,
+                        ),
+                        onSelected: isLoading ? null : (_) => onToggleInterest(option.code),
+                      );
+                    }).toList(),
+                  ),
                   if (errorText != null) ...[
                     const SizedBox(height: 12),
                     Text(
@@ -1102,6 +1406,45 @@ class _ProfileStep extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _InterestOption {
+  const _InterestOption(this.code);
+
+  final String code;
+
+  static const all = <_InterestOption>[
+    _InterestOption('electronics'),
+    _InterestOption('appliances'),
+    _InterestOption('clothing'),
+    _InterestOption('food'),
+    _InterestOption('beauty'),
+    _InterestOption('sports'),
+    _InterestOption('home'),
+    _InterestOption('other'),
+  ];
+
+  String label(AppLocalizations l10n) {
+    switch (code) {
+      case 'electronics':
+        return l10n.interestElectronics;
+      case 'appliances':
+        return l10n.interestAppliances;
+      case 'clothing':
+        return l10n.interestClothing;
+      case 'food':
+        return l10n.interestFood;
+      case 'beauty':
+        return l10n.interestBeauty;
+      case 'sports':
+        return l10n.interestSports;
+      case 'home':
+        return l10n.interestHome;
+      case 'other':
+      default:
+        return l10n.interestOther;
+    }
   }
 }
 
