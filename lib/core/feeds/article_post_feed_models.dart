@@ -14,6 +14,12 @@ class ArticlePostFeedItem {
     required this.slot,
     required this.mediaKind,
     required this.mediaStoragePath,
+    this.videoMobileLowStoragePath,
+    this.thumbnailStoragePath,
+    this.processingStatus = 'ready',
+    this.mediaWidth,
+    this.mediaHeight,
+    this.mediaDurationSeconds,
     this.caption,
   });
 
@@ -28,12 +34,27 @@ class ArticlePostFeedItem {
   final List<String> additionalImageStoragePaths;
   final String? description;
   final int slot;
+
   /// `image` ou `video` (API).
   final String mediaKind;
   final String mediaStoragePath;
+  final String? videoMobileLowStoragePath;
+  final String? thumbnailStoragePath;
+  final String processingStatus;
+  final int? mediaWidth;
+  final int? mediaHeight;
+  final double? mediaDurationSeconds;
   final String? caption;
 
-  bool get isVideo => mediaKind.toLowerCase() == 'video';
+  bool get isVideo => mediaKind.trim().toLowerCase() == 'video';
+  bool get isVideoReady =>
+      isVideo && processingStatus.trim().toLowerCase() == 'ready';
+
+  String get preferredVideoStoragePath {
+    final mobileLow = videoMobileLowStoragePath?.trim();
+    if (mobileLow != null && mobileLow.isNotEmpty) return mobileLow;
+    return mediaStoragePath.trim();
+  }
 
   factory ArticlePostFeedItem.fromJson(Map<String, dynamic> json) {
     return ArticlePostFeedItem(
@@ -45,14 +66,21 @@ class ArticlePostFeedItem {
       unitSalePrice: json['unit_sale_price']?.toString() ?? '0',
       stockStatus: json['stock_status'] as String? ?? 'out_of_stock',
       primaryImageStoragePath: json['primary_image_storage_path'] as String?,
-      additionalImageStoragePaths: (json['additional_image_storage_paths'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
+      additionalImageStoragePaths:
+          (json['additional_image_storage_paths'] as List<dynamic>?)
+                  ?.map((e) => e.toString())
+                  .toList() ??
           const [],
       description: json['description'] as String?,
       slot: (json['slot'] as num?)?.toInt() ?? 1,
       mediaKind: json['media_kind'] as String? ?? 'image',
       mediaStoragePath: json['media_storage_path'] as String? ?? '',
+      videoMobileLowStoragePath: json['video_mobile_low_storage_path'] as String?,
+      thumbnailStoragePath: json['thumbnail_storage_path'] as String?,
+      processingStatus: json['processing_status'] as String? ?? 'ready',
+      mediaWidth: (json['media_width'] as num?)?.toInt(),
+      mediaHeight: (json['media_height'] as num?)?.toInt(),
+      mediaDurationSeconds: (json['media_duration_seconds'] as num?)?.toDouble(),
       caption: json['caption'] as String?,
     );
   }
@@ -74,7 +102,9 @@ class PostFeedPage {
   factory PostFeedPage.fromJson(Map<String, dynamic> json) {
     final raw = json['items'] as List<dynamic>? ?? const [];
     return PostFeedPage(
-      items: raw.map((e) => ArticlePostFeedItem.fromJson(e as Map<String, dynamic>)).toList(),
+      items: raw
+          .map((e) => ArticlePostFeedItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
       total: (json['total'] as num?)?.toInt() ?? 0,
       limit: (json['limit'] as num?)?.toInt() ?? 0,
       offset: (json['offset'] as num?)?.toInt() ?? 0,

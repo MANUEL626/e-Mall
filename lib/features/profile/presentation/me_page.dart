@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/customer_profile_store.dart';
-import '../../../core/auth/sign_out_ui.dart';
+import '../../../services/users/users_service.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../account/presentation/account_page.dart';
 import '../../orders/presentation/customer_orders_page.dart';
@@ -33,10 +32,10 @@ class MePage extends StatelessWidget {
         listenable: CustomerProfileStore.instance,
         builder: (context, _) {
           final p = CustomerProfileStore.instance.profile;
-          final name = p?.displayName ?? 'Profil';
+          final name = p?.displayName ?? l10n.meProfileFallback;
           final subtitle = p?.mail?.trim().isNotEmpty == true
               ? p!.mail!
-              : 'Complétez votre profil';
+              : l10n.meCompleteProfile;
           final photoUrl = p?.profilePicture;
           final showAvatar = _hasNetworkImage(photoUrl);
 
@@ -92,32 +91,32 @@ class MePage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 14),
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _StatItem(label: 'Orders', value: '12'),
-                    _StatItem(label: 'Wishlist', value: '24'),
-                    _StatItem(label: 'Points', value: '2.4k'),
+                    _StatItem(label: l10n.meOrdersStat, value: '12'),
+                    _StatItem(label: l10n.meWishlistStat, value: '24'),
+                    _StatItem(label: l10n.mePointsStat, value: '2.4k'),
                   ],
                 ),
                 const SizedBox(height: 18),
                 _OptionTile(
-                  title: 'My Account',
-                  subtitle: 'Wallet, payments, and billing',
+                  title: l10n.meAccountTitle,
+                  subtitle: l10n.meAccountSubtitle,
                   icon: Icons.account_balance_wallet_outlined,
                   onTap: () {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountPage()));
                   },
                 ),
                 _OptionTile(
-                  title: 'My Wishlist',
-                  subtitle: 'Curated artisan favorites',
+                  title: l10n.meWishlistTitle,
+                  subtitle: l10n.meWishlistSubtitle,
                   icon: Icons.favorite_outline,
                   onTap: onOpenWishlist,
                 ),
                 _OptionTile(
-                  title: 'My Cart',
-                  subtitle: 'Items ready for checkout',
+                  title: l10n.meCartTitle,
+                  subtitle: l10n.meCartSubtitle,
                   icon: Icons.shopping_bag_outlined,
                   onTap: onOpenCart,
                 ),
@@ -130,13 +129,6 @@ class MePage extends StatelessWidget {
                       MaterialPageRoute<void>(builder: (_) => const CustomerOrdersPage()),
                     );
                   },
-                ),
-                _OptionTile(
-                  title: l10n.signOutMenuTitle,
-                  subtitle: l10n.signOutMenuSubtitle,
-                  icon: Icons.logout_rounded,
-                  titleColor: const Color(0xFF9A2F20),
-                  onTap: () => presentSignOutFlow(context),
                 ),
               ],
             ),

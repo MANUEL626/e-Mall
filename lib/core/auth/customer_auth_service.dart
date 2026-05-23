@@ -14,6 +14,37 @@ class CustomerAuthService {
 
   SupabaseClient get _client => Supabase.instance.client;
 
+  String _messageFromErrorBody(String body, String fallback) {
+    if (body.isEmpty) return fallback;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final detail = decoded['detail'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          return detail.trim();
+        }
+        if (detail is Map && detail['message'] != null) {
+          return detail['message'].toString();
+        }
+        if (detail is List && detail.isNotEmpty) {
+          final first = detail.first;
+          if (first is Map && first['msg'] != null) {
+            return first['msg'].toString();
+          }
+        }
+        final message = decoded['message'];
+        if (message is String && message.trim().isNotEmpty) {
+          return message.trim();
+        }
+        final error = decoded['error'];
+        if (error is String && error.trim().isNotEmpty) {
+          return error.trim();
+        }
+      }
+    } catch (_) {}
+    return body;
+  }
+
   /// Étape 1 — envoi du SMS OTP (GoTrue / Twilio côté Supabase).
   Future<void> signInWithOtp({required String phoneE164}) async {
     await _client.auth.signInWithOtp(phone: phoneE164);
@@ -67,7 +98,7 @@ class CustomerAuthService {
     );
     if (resp.statusCode >= 400) {
       throw CustomerBootstrapException(
-        resp.body.isNotEmpty ? resp.body : 'Bootstrap échoué',
+        _messageFromErrorBody(resp.body, 'Bootstrap échoué'),
         statusCode: resp.statusCode,
       );
     }
@@ -101,7 +132,7 @@ class CustomerAuthService {
     );
     if (resp.statusCode >= 400) {
       throw CustomerBootstrapException(
-        resp.body.isNotEmpty ? resp.body : 'Mise à jour du profil échouée',
+        _messageFromErrorBody(resp.body, 'Mise à jour du profil échouée'),
         statusCode: resp.statusCode,
       );
     }

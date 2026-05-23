@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/catalog/customer_catalog_service.dart';
-import '../../../core/commerce/customer_sale_service.dart';
+import '../../../services/catalog/catalog_service.dart';
+import '../../../services/orders/orders_service.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/ui/app_feedback.dart';
 import '../../../l10n/app_localizations.dart';
 
 /// Scan du QR marchand / livreur puis `POST /api/v1/customer-sales/{order_id}/confirm-receipt`
@@ -71,13 +72,13 @@ class _ConfirmReceiptScanPageState extends State<ConfirmReceiptScanPage> {
       await _executeConfirm(trimmed);
     } on CatalogApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       setState(() => _busy = false);
     } on StateError {
       if (mounted) setState(() => _busy = false);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e)));
       setState(() => _busy = false);
     }
   }
@@ -124,7 +125,7 @@ class _ConfirmReceiptScanPageState extends State<ConfirmReceiptScanPage> {
       await _executeConfirm(trimmed);
     } on CatalogApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       setState(() => _busy = false);
       await _scannerController.start();
     } on StateError {
@@ -132,7 +133,7 @@ class _ConfirmReceiptScanPageState extends State<ConfirmReceiptScanPage> {
       await _scannerController.start();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e)));
       setState(() => _busy = false);
       await _scannerController.start();
     }
@@ -162,13 +163,13 @@ class _ConfirmReceiptScanPageState extends State<ConfirmReceiptScanPage> {
       await _executeConfirm(trimmed);
     } on CatalogApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       setState(() => _busy = false);
     } on StateError {
       setState(() => _busy = false);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e)));
       setState(() => _busy = false);
     }
   }

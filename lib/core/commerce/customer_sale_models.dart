@@ -53,12 +53,16 @@ class CustomerMeParams {
     this.locale,
     this.defaultLongitude,
     this.defaultLatitude,
+    this.country,
+    this.interests = const [],
     this.extra,
   });
 
   final String? locale;
   final double? defaultLongitude;
   final double? defaultLatitude;
+  final String? country;
+  final List<String> interests;
   final Map<String, dynamic>? extra;
 
   factory CustomerMeParams.fromJson(Map<String, dynamic> json) {
@@ -74,20 +78,37 @@ class CustomerMeParams {
       locale: json['locale'] as String?,
       defaultLongitude: (json['default_longitude'] as num?)?.toDouble(),
       defaultLatitude: (json['default_latitude'] as num?)?.toDouble(),
+      country: json['country'] as String?,
+      interests: (json['interests'] as List<dynamic>? ?? const [])
+          .map((e) => e.toString())
+          .toList(),
       extra: extraMap,
     );
   }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'locale': locale,
+        'default_longitude': defaultLongitude,
+        'default_latitude': defaultLatitude,
+        'country': country,
+        'interests': interests,
+        'extra': extra,
+      };
 
   static Map<String, dynamic> patchBody({
     String? locale,
     double? defaultLongitude,
     double? defaultLatitude,
+    String? country,
+    List<String>? interests,
     Map<String, dynamic>? extra,
   }) {
     final out = <String, dynamic>{};
     if (locale != null) out['locale'] = locale;
     if (defaultLongitude != null) out['default_longitude'] = defaultLongitude;
     if (defaultLatitude != null) out['default_latitude'] = defaultLatitude;
+    if (country != null) out['country'] = country;
+    if (interests != null) out['interests'] = interests;
     if (extra != null) out['extra'] = extra;
     return out;
   }

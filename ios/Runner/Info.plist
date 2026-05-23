@@ -49,6 +49,8 @@
 	<string>L’app a besoin d’accéder à vos photos pour choisir une image de profil.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>La caméra permet de scanner le code QR affiché par la boutique ou le livreur pour confirmer la réception de votre commande.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>L'app utilise votre position pour renseigner l'adresse de livraison ou votre position par defaut.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -61,6 +63,15 @@
 				<string>emall</string>
 			</array>
 		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>tg</string>
+		<string>instagram</string>
+		<string>snapchat</string>
+		<string>tiktok</string>
+		<string>mailto</string>
 	</array>
 </dict>
 </plist>

@@ -18,6 +18,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get languageEnglish => 'English';
 
   @override
+  String get languageGerman => 'Deutsch';
+
+  @override
+  String get languageChinese => '中文';
+
+  @override
+  String get languageSystemDefault =>
+      'Default: your phone language, French if unsupported';
+
+  @override
   String get onboardingHandpicked => 'Handpicked';
 
   @override
@@ -88,6 +98,46 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileAllFieldsOptional => 'All fields are optional.';
 
   @override
+  String get profilePrefsTitle => 'Preferences';
+
+  @override
+  String get profilePrefsSubtitle =>
+      'Used to personalize products, language and delivery defaults.';
+
+  @override
+  String get labelDefaultLongitude => 'Default longitude';
+
+  @override
+  String get labelDefaultLatitude => 'Default latitude';
+
+  @override
+  String get labelInterests => 'Interests';
+
+  @override
+  String get interestElectronics => 'Electronics';
+
+  @override
+  String get interestAppliances => 'Appliances';
+
+  @override
+  String get interestClothing => 'Clothing';
+
+  @override
+  String get interestFood => 'Food';
+
+  @override
+  String get interestBeauty => 'Beauty';
+
+  @override
+  String get interestSports => 'Sports';
+
+  @override
+  String get interestHome => 'Home';
+
+  @override
+  String get interestOther => 'Other';
+
+  @override
   String get removePhotoTooltip => 'Remove photo';
 
   @override
@@ -148,6 +198,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get errorInvalidEmail => 'Invalid email address.';
+
+  @override
+  String get errorInvalidCoordinates =>
+      'Enter valid longitude and latitude values.';
 
   @override
   String get snackAddedToCart => 'Added to cart';
@@ -329,6 +383,39 @@ class AppLocalizationsEn extends AppLocalizations {
   String get meOrderHistorySubtitle => 'Track and review your purchases';
 
   @override
+  String get meProfileFallback => 'Profile';
+
+  @override
+  String get meCompleteProfile => 'Complete your profile';
+
+  @override
+  String get meOrdersStat => 'Orders';
+
+  @override
+  String get meWishlistStat => 'Wishlist';
+
+  @override
+  String get mePointsStat => 'Points';
+
+  @override
+  String get meAccountTitle => 'My account';
+
+  @override
+  String get meAccountSubtitle => 'Wallet, payments, and billing';
+
+  @override
+  String get meWishlistTitle => 'My wishlist';
+
+  @override
+  String get meWishlistSubtitle => 'Your favorite products';
+
+  @override
+  String get meCartTitle => 'My cart';
+
+  @override
+  String get meCartSubtitle => 'Items ready for checkout';
+
+  @override
   String get orderConfirmReceiptTitle => 'Confirm receipt';
 
   @override
@@ -356,6 +443,69 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get orderScannerWebHint =>
       'Camera scanning may be limited in the browser — paste the QR payload below if needed.';
+
+  @override
+  String get settingsTitle => 'Settings';
+
+  @override
+  String get editProfileTooltip => 'Edit profile';
+
+  @override
+  String get settingsProfileSection => 'Profile';
+
+  @override
+  String get settingsPreferencesSection => 'Preferences';
+
+  @override
+  String get settingsAccountSection => 'Account';
+
+  @override
+  String get settingsInterestsSection => 'Interests';
+
+  @override
+  String get settingsNameLabel => 'Name';
+
+  @override
+  String get settingsPhoneLabel => 'Phone';
+
+  @override
+  String get settingsLocationLabel => 'Location';
+
+  @override
+  String get settingsRegionLabel => 'Region';
+
+  @override
+  String get settingsLanguageLabel => 'Language';
+
+  @override
+  String get settingsUndefined => 'Not set';
+
+  @override
+  String get profileUpdateTitle => 'Edit profile';
+
+  @override
+  String get profileUpdateSaveTooltip => 'Save';
+
+  @override
+  String get profileUpdateGenericError =>
+      'Unable to update the profile. Try again.';
+
+  @override
+  String get profileUpdateConflictError =>
+      'Email or username already used. Choose another value.';
+
+  @override
+  String get profileUpdatePhotoError => 'Unable to choose this photo.';
+
+  @override
+  String get profileUpdateLocationTitle => 'Location';
+
+  @override
+  String get profileUpdateLocationSubtitle =>
+      'Use your current position or tap the map.';
+
+  @override
+  String get profileUpdateExpiredSession => 'Session expired. Sign in again.';
 
   @override
   String get signOutMenuTitle => 'Sign out';

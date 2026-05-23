@@ -3,8 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/auth/auth_entry_prefs.dart';
-import '../core/auth/auth_gate_service.dart';
+import '../services/auth/auth_service.dart';
 import '../core/config/app_config.dart';
 import '../features/onboarding/presentation/onboarding_flow_page.dart';
 import '../features/shell/presentation/main_shell_page.dart';

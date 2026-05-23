@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/catalog/catalog_models.dart';
-import '../../../core/catalog/customer_catalog_service.dart';
-import '../../../core/catalog/product_image_url.dart';
-import '../../../core/commerce/customer_shopping_service.dart';
+import '../../../services/catalog/catalog_service.dart';
+import '../../../services/wishlist/wishlist_service.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/ui/app_feedback.dart';
 
 /// Liste de souhaits depuis `GET /api/v1/customers/wishlist`.
 class WishlistPage extends StatefulWidget {
@@ -64,14 +63,14 @@ class _WishlistPageState extends State<WishlistPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.message;
+        _error = AppFeedback.userErrorMessage(e.message);
         _items = null;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = AppFeedback.userErrorMessage(e);
         _items = null;
       });
     }
@@ -98,9 +97,7 @@ class _WishlistPageState extends State<WishlistPage> {
       }
     } on CatalogApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       }
     } finally {
       if (mounted) {
@@ -126,9 +123,7 @@ class _WishlistPageState extends State<WishlistPage> {
       );
     } on CatalogApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       }
     } finally {
       if (mounted) {

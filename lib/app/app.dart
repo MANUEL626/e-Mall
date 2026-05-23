@@ -4,12 +4,13 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/auth/customer_profile_store.dart';
-import '../core/commerce/customer_sale_models.dart';
-import '../core/commerce/emall_deep_link.dart';
+import '../services/orders/orders_service.dart';
+import '../services/users/users_service.dart';
+import '../core/branding/app_branding.dart';
 import '../core/config/app_config.dart';
 import '../core/locale/app_locale_controller.dart';
 import 'session_root.dart';
+import '../features/new_feed/presentation/new_feed_page.dart';
 import '../features/orders/presentation/confirm_receipt_scan_page.dart';
 import '../l10n/app_localizations.dart';
 
@@ -33,11 +34,12 @@ class _ECommerceAppState extends State<ECommerceApp> {
   @override
   void initState() {
     super.initState();
-    CustomerProfileStore.instance.restoreFromPrefs();
+    unawaited(_restoreUserSnapshots());
     if (AppConfig.isSupabaseConfigured) {
       _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
         if (data.event == AuthChangeEvent.signedOut) {
           unawaited(CustomerProfileStore.instance.clear());
+          unawaited(CustomerParamsStore.instance.clear());
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _rootNavKey.currentState?.popUntil((route) => route.isFirst);
           });
@@ -45,6 +47,15 @@ class _ECommerceAppState extends State<ECommerceApp> {
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_initAppLinks()));
+  }
+
+  Future<void> _restoreUserSnapshots() async {
+    await CustomerProfileStore.instance.restoreFromPrefs();
+    await CustomerParamsStore.instance.restoreFromPrefs();
+    final locale = CustomerParamsStore.instance.params?.locale;
+    if (AppLocaleController.isSupported(locale)) {
+      await AppLocaleController.instance.setLocale(Locale(locale!.toLowerCase()));
+    }
   }
 
   Future<void> _initAppLinks() async {
@@ -61,7 +72,47 @@ class _ECommerceAppState extends State<ECommerceApp> {
   }
 
   void _handleAppLinkUri(Uri uri) {
-    if (uri.scheme.toLowerCase() != 'emall') return;
+    final scheme = uri.scheme.toLowerCase();
+    final isEmallLink = scheme == 'emall';
+    final expectedShareHost = Uri.tryParse(AppConfig.shareBaseUrl)?.host.toLowerCase();
+    final isWebShareLink =
+        (scheme == 'https' || scheme == 'http') &&
+            expectedShareHost != null &&
+            uri.host.toLowerCase() == expectedShareHost &&
+            uri.pathSegments.length >= 2 &&
+            uri.pathSegments[uri.pathSegments.length - 2].toLowerCase() == 'new';
+    if (!isEmallLink && !isWebShareLink) return;
+
+    if (uri.host.toLowerCase() == 'new' || isWebShareLink) {
+      final raw = uri.toString();
+      final now = DateTime.now();
+      if (_lastDeepLinkRaw == raw &&
+          _lastDeepLinkAt != null &&
+          now.difference(_lastDeepLinkAt!) < _deepLinkDedupWindow) {
+        return;
+      }
+      _lastDeepLinkRaw = raw;
+      _lastDeepLinkAt = now;
+
+      final articleId = isWebShareLink
+          ? uri.pathSegments.last
+          : uri.pathSegments.isNotEmpty
+              ? uri.pathSegments.first
+              : null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final nav = _rootNavKey.currentState;
+        if (nav == null) return;
+        unawaited(
+          nav.push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => NewFeedPage(initialArticleId: articleId),
+            ),
+          ),
+        );
+      });
+      return;
+    }
 
     final normalized = EmallDeepLink.normalizeToQrPayload(uri);
     final payload = SaleQrPayload.tryParse(normalized);
@@ -112,7 +163,7 @@ class _ECommerceAppState extends State<ECommerceApp> {
         return MaterialApp(
           navigatorKey: _rootNavKey,
           debugShowCheckedModeBanner: false,
-          title: 'e-Mall',
+          title: AppBranding.appName,
           locale: AppLocaleController.instance.locale,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -144,4 +195,3 @@ class _ECommerceAppState extends State<ECommerceApp> {
     );
   }
 }
-

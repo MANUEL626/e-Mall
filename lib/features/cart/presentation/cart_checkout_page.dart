@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/catalog/customer_catalog_service.dart';
-import '../../../core/catalog/product_image_url.dart';
-import '../../../core/commerce/customer_sale_models.dart';
-import '../../../core/commerce/customer_sale_service.dart';
-import '../../../core/commerce/customer_shopping_service.dart';
-import '../../../core/commerce/shopping_cart_models.dart';
+import '../../../services/cart/cart_service.dart';
+import '../../../services/catalog/catalog_service.dart';
+import '../../../services/orders/orders_service.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/location/location_picker.dart';
+import '../../../core/ui/app_feedback.dart';
 
 /// Plafond d’article par ligne côté API panier (`guide_api.md`) — même ordre de grandeur pour la commande.
 const int _kMaxOrderQuantity = 99999;
@@ -209,11 +207,11 @@ class _CartCheckoutPageState extends State<CartCheckoutPage> {
       if (mounted) Navigator.of(context).pop(true);
     } on CatalogApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e)));
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -269,32 +267,16 @@ class _CartCheckoutPageState extends State<CartCheckoutPage> {
                     const Text('Coordonnées de livraison', style: TextStyle(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text(
-                      _loadingParams ? 'Chargement des coordonnées enregistrées…' : 'Longitude / latitude (décimales).',
+                      _loadingParams ? 'Chargement des coordonnees enregistrees...' : 'Choisissez un point de livraison.',
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
                     const SizedBox(height: 8),
-                    TextField(
-                      controller: _lng,
-                      decoration: const InputDecoration(
-                        labelText: 'Longitude',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[\d\.\,\-]')),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _lat,
-                      decoration: const InputDecoration(
-                        labelText: 'Latitude',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[\d\.\,\-]')),
-                      ],
+                    LocationPicker(
+                      longitudeController: _lng,
+                      latitudeController: _lat,
+                      title: _loadingParams ? 'Chargement de la position enregistree...' : 'Lieu de livraison',
+                      subtitle: 'Utilisez votre position actuelle ou touchez la carte pour placer le marqueur.',
+                      compact: true,
                     ),
                   ],
                   const SizedBox(height: 16),

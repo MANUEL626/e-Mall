@@ -22,7 +22,7 @@ class _MainShellPageState extends State<MainShellPage> {
     final l10n = AppLocalizations.of(context)!;
     final pages = [
       const HomePage(),
-      const NewFeedPage(),
+      NewFeedPage(isVisible: _currentIndex == 1),
       MePage(
         onOpenCart: () {
           Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CartPage()));
@@ -34,7 +34,10 @@ class _MainShellPageState extends State<MainShellPage> {
     ];
 
     return Scaffold(
-      body: pages[_currentIndex],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: pages,
+      ),
       bottomNavigationBar: NavigationBar(
         backgroundColor: const Color(0xFFF7F0EB),
         selectedIndex: _currentIndex,

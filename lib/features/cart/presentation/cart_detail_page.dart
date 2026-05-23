@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../core/catalog/customer_catalog_service.dart';
-import '../../../core/catalog/product_image_url.dart';
-import '../../../core/commerce/customer_shopping_service.dart';
-import '../../../core/commerce/shopping_cart_models.dart';
+import '../../../services/cart/cart_service.dart';
+import '../../../services/catalog/catalog_service.dart';
 import '../../../core/config/app_config.dart';
+import '../../../core/ui/app_feedback.dart';
 import 'cart_checkout_page.dart';
 
 /// Détail d’un panier boutique : lignes, quantités, vidage.
@@ -53,11 +52,11 @@ class _CartDetailPageState extends State<CartDetailPage> {
     } on CatalogApiException catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e)));
     }
   }
 
@@ -81,7 +80,7 @@ class _CartDetailPageState extends State<CartDetailPage> {
       await _reloadFromApi();
     } on CatalogApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       }
     } finally {
       if (mounted) setState(() => _busyLineIds.remove(line.lineId));
@@ -102,7 +101,7 @@ class _CartDetailPageState extends State<CartDetailPage> {
       await _reloadFromApi();
     } on CatalogApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       }
     } finally {
       if (mounted) setState(() => _busyLineIds.remove(line.lineId));
@@ -137,7 +136,7 @@ class _CartDetailPageState extends State<CartDetailPage> {
       Navigator.of(context).pop(true);
     } on CatalogApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        AppFeedback.show(context, AppFeedback.error(AppFeedback.userErrorMessage(e.message)));
       }
     }
   }
